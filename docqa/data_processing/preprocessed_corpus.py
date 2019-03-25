@@ -162,7 +162,7 @@ class PreprocessedData(TrainingData):
 
         print("done")
 
-    def preprocess(self, n_processes=1, chunk_size=500):
+    def preprocess(self, n_processes=1, chunk_size=500, filename=None):
         if self._train is not None:
             return
         print("Loading data...")
@@ -221,6 +221,9 @@ class PreprocessedData(TrainingData):
                 self._train = rng.choice(self._train, self.sample_preprocessed_train, False)
                 print("Sampled %d of %d q-c pairs" % (len(self._train), l))
 
+        if filename:
+            print("Caching preprocess at", filename)
+            self.cache_preprocess(filename)
         print("Done")
 
     def get_train(self) -> Dataset:

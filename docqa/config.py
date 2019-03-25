@@ -16,4 +16,6 @@ LM_DIR = join(expanduser("~"), "data", "lm")
 DOCUMENT_READER_DB = join(expanduser("~"), "data", "doc-rd", "docs.db")
 
 
-CORPUS_DIR = join(dirname(dirname(__file__)), "data")
+#CORPUS_DIR = join(dirname(dirname(__file__)), "data")
+CORPUS_DIR = "/home/cse/btech/cs1150291/scratch/project/document-qa-master/data"
+print(CORPUS_DIR)

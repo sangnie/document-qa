@@ -274,7 +274,7 @@ def start_training(
            True, train_params, evaluators, out, notes, dry_run)
 
 
-def resume_training(out: ModelDir, notes: str = None, dry_run=False, start_eval=False):
+def resume_training(out: ModelDir, notes: str = None, dry_run=False, start_eval=False, filename=None):
     """ Resume training an existing model """
 
     train_params = out.get_last_train_params()
@@ -288,7 +288,13 @@ def resume_training(out: ModelDir, notes: str = None, dry_run=False, start_eval=
 
     if isinstance(train_data, PreprocessedData):
         # TODO don't hard code # of processes
-        train_data.preprocess(6, 1000)
+        print(filename)
+        if filename:
+            print("Load preprocess from", filename)
+            train_data.load_preprocess(filename)
+            print("Loaded preprocess.")
+        else:
+            train_data.preprocess(6, 1000)
 
     latest = tf.train.latest_checkpoint(out.save_dir)
     if latest is None:
@@ -348,8 +354,9 @@ def _train(model: Model,
 
     print("Setting up model prediction / tf...")
 
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    #sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
 
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
     with sess.as_default():
         pred = model.get_prediction()
     evaluator_runner.set_input(pred)
@@ -493,7 +500,8 @@ def _train_async(model: Model,
         input_tensor.set_shape(pl.shape)
 
     print("Init model...")
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    #sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
     with sess.as_default():
         pred = model.get_predictions_for(dict(zip(placeholders, input_tensors)))
 
@@ -651,7 +659,8 @@ def test(model: Model, evaluators, datasets: Dict[str, Dataset], loader, checkpo
         inputs = model.get_placeholders()
     input_dict = {p: x for p, x in zip(model.get_placeholders(), inputs)}
 
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    #sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
     with sess.as_default():
         pred = model.get_predictions_for(input_dict)
     evaluator_runner.set_input(pred)

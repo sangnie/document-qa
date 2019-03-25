@@ -1,8 +1,11 @@
 import argparse
 from datetime import datetime
 from typing import Optional
-
+import os
+from docqa.config import CORPUS_DIR
+from os.path import join
 from tensorflow.contrib.keras.python.keras.initializers import TruncatedNormal
+#from tensorflow.keras.initializers import TruncatedNormal
 
 from docqa import model_dir
 from docqa import trainer
@@ -135,6 +138,8 @@ def main():
     else:
         extract = ExtractMultiParagraphs(MergeParagraphs(400), TopTfIdf(stop, 4), model.preprocessor, intern=True)
 
+    print("here1")
+
     if mode == "paragraph-level":
         n_epochs = 16
         train = ParagraphAndQuestionsBuilder(ClusteredBatcher(60, ContextLenBucketedKey(3), True))
@@ -161,11 +166,19 @@ def main():
 
     data = TriviaQaWebDataset()
 
+    print("here2")
+
     params = get_triviaqa_train_params(n_epochs, n_dev, n_train)
 
+    filename = join(CORPUS_DIR,"../preprocess_triviaqa.gz")
     data = PreprocessedData(data, extract, train, test, eval_on_verified=False)
 
-    data.preprocess(args.n_processes, 1000)
+    if os.path.isfile(filename):
+        data.load_preprocess(filename)
+    else:
+        data.preprocess(args.n_processes, 1000, filename=filename)
+
+    print("here3")
 
     with open(__file__, "r") as f:
         notes = f.read()
