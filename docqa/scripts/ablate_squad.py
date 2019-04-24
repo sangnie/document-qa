@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 
+from docqa.config import CORPUS_DIR
 from docqa import model_dir
 from docqa import trainer
 from docqa.data_processing.multi_paragraph_qa import StratifyParagraphSetsBuilder, StratifyParagraphsBuilder, \
@@ -12,10 +13,11 @@ from docqa.dataset import ClusteredBatcher
 from docqa.evaluator import LossEvaluator, MultiParagraphSpanEvaluator, SpanEvaluator
 from docqa.scripts.ablate_triviaqa import get_model
 from docqa.squad.squad_data import SquadCorpus, DocumentQaTrainingData
-from docqa.squad.squad_document_qa import SquadTfIdfRanker
+from docqa.squad.squad_document_qa import SquadTfIdfRanker, SquadEmbeddingDistance
 from docqa.text_preprocessor import WithIndicators
 from docqa.trainer import TrainParams, SerializableOptimizer
-
+import os
+from os.path import join
 
 def train_params(n_epochs):
     return TrainParams(SerializableOptimizer("Adadelta", dict(learning_rate=1.0)),
@@ -68,7 +70,7 @@ def main():
             train_batching = ClusteredBatcher(45, ContextLenBucketedKey(3), True, False)
             data = PreprocessedData(
                 SquadCorpus(),
-                SquadTfIdfRanker(NltkPlusStopWords(True), 4, True, model.preprocessor),
+                SquadEmbeddingDistance(NltkPlusStopWords(True), 4, True, model.preprocessor),#SquadTfIdfRanker(NltkPlusStopWords(True), 4, True, model.preprocessor),
                 StratifyParagraphsBuilder(train_batching, 1),
                 eval_dataset,
                 eval_on_verified=False,
@@ -77,14 +79,20 @@ def main():
             n_epochs = 26
             data = PreprocessedData(
                 SquadCorpus(),
-                SquadTfIdfRanker(NltkPlusStopWords(True), 4, True, model.preprocessor),
+                SquadEmbeddingDistance(NltkPlusStopWords(True), 4, True, model.preprocessor),#SquadTfIdfRanker(NltkPlusStopWords(True), 4, True, model.preprocessor),
                 StratifyParagraphSetsBuilder(25, args.mode == "merge", True, 1),
                 eval_dataset,
                 eval_on_verified=False,
             )
 
         eval = [LossEvaluator(), MultiParagraphSpanEvaluator(17, "squad")]
-        data.preprocess(1)
+
+        filename = join(CORPUS_DIR,"../preprocessed_squad_embedding.gz")
+
+        if os.path.isfile(filename):
+            data.load_preprocess(filename)
+        else:
+            data.preprocess(1, filename=filename)
 
     with open(__file__, "r") as f:
         notes = f.read()

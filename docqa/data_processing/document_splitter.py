@@ -9,6 +9,9 @@ from docqa.data_processing.text_utils import NltkPlusStopWords, ParagraphWithInv
 from docqa.configurable import Configurable
 from docqa.triviaqa.evidence_corpus import TriviaQaEvidenceCorpusTxt
 
+from docqa.data_processing.word_vectors import load_word_vectors
+
+
 """
 Splits a document into paragraphs
 """
@@ -140,6 +143,198 @@ class TopTfIdf(ParagraphFilter):
             return [(paragraphs[i], dists[i]) for i in sorted_ix[:self.n_to_select]]
 
 
+class EmbeddingDistance(ParagraphFilter):
+    def __init__(self, stop, n_to_select: int, filter_dist_one: bool=False, rank=True):
+        self.stop = stop
+        self.rank = rank
+        self.n_to_select = n_to_select
+        self.filter_dist_one = filter_dist_one
+        self.wv = load_word_vectors("glove.840B.300d") 
+
+    def prune(self, question, paragraphs: List[ExtractedParagraph]):
+        if not self.filter_dist_one and len(paragraphs) == 1:
+            return paragraphs
+        """  
+        tfidf = TfidfVectorizer(strip_accents="unicode", stop_words=self.stop.words)
+        text = []
+        for para in paragraphs:
+            text.append(" ".join(" ".join(s) for s in para.text))
+        try:
+            para_features = tfidf.fit_transform(text)
+            q_features = tfidf.transform([" ".join(question)])
+        except ValueError:
+            return []
+
+        dists = pairwise_distances(q_features, para_features, "cosine").ravel()
+        sorted_ix = np.lexsort(([x.start for x in paragraphs], dists))  # in case of ties, use the earlier paragraph
+
+        if self.filter_dist_one:
+            return [paragraphs[i] for i in sorted_ix[:self.n_to_select] if dists[i] < 1.0]
+        else:
+            return [paragraphs[i] for i in sorted_ix[:self.n_to_select]]
+        """
+        #print("loading word embeddings")
+        #wv = load_word_vectors("glove.840B.300d") 
+        print("Question",question)
+        question_embedding = 0
+        count = 0
+        for q in question:
+            if q in self.wv:
+                question_embedding += self.wv[q]
+                count += 1
+            #print("wvq",q, self.wv[q])
+        if count > 0:
+            question_embedding = np.asarray(question_embedding)/count
+        else:
+            question_embedding = np.zeros(300, dtype=np.float32)
+        #print("Question embedding", question_embedding)
+        #print("QE shape",question_embedding.shape)
+        question_norm = np.sqrt((question_embedding*question_embedding).sum())
+        #print("ques norm", question_norm)
+        #question_embedding = np.asarray(question_embedding, dtype=np.float32)/question_norm
+        if question_norm > 0:
+            question_embedding = question_embedding/question_norm
+
+        para_embeddings = []
+        #print("paragraphs", paragraphs)
+        #print("paragraphs shape", len(paragraphs))
+        
+        for para in paragraphs:
+            #print("para",para)
+            #print("para.text", para.text)
+            embed = 0
+            count = 0
+            for s in para.text:
+                for word in s:
+                    if word in self.wv:
+                        embed += self.wv[word]
+                        count += 1
+            if count > 0:
+                para_embeddings.append(embed/count)
+            else:
+                para_embeddings.append(np.zeros(300, dtype=np.float32))
+        para_embeddings = np.asarray(para_embeddings)
+        #print("para embed",para_embeddings)
+        #print("para embed shape", para_embeddings.shape)
+
+        for e in range(len(para_embeddings)):
+            #para_embeddings[e] = para_embeddings[e]/(para_embeddings[e]*para_embeddings[e]).sum()
+            norm = np.sqrt((para_embeddings[e]*para_embeddings[e]).sum())
+            para_embeddings[e] = para_embeddings[e]/norm
+        #print(para_embeddings[0])
+        
+        if len(para_embeddings) == 0:
+            print(para_embeddings)
+            print(len(paragraphs))
+            print(paragraphs)
+
+        dists = (question_embedding*para_embeddings).sum(axis=1)
+        #print("dists",dists)
+        #print("dists shape",dists.shape)
+        sorted_ix = np.lexsort(([x.start for x in paragraphs], dists))
+        #print("sorted",sorted_ix)
+        #print("sorted shape", sorted_ix.shape)
+        if self.filter_dist_one:
+            return [paragraphs[i] for i in sorted_ix[:self.n_to_select] if dists[i] < 1.0]
+        else:
+            return [paragraphs[i] for i in sorted_ix[:self.n_to_select]]
+    
+    def dists(self, question, paragraphs: List[ExtractedParagraph]):
+        """
+        tfidf = TfidfVectorizer(strip_accents="unicode", stop_words=self.stop.words)
+        text = []
+        for para in paragraphs:
+            text.append(" ".join(" ".join(s) for s in para.text))
+        try:
+            para_features = tfidf.fit_transform(text)
+            q_features = tfidf.transform([" ".join(question)])
+        except ValueError:
+            return []
+
+        dists = pairwise_distances(q_features, para_features, "cosine").ravel()
+        sorted_ix = np.lexsort(([x.start for x in paragraphs], dists))  # in case of ties, use the earlier paragraph
+
+        if self.filter_dist_one:
+            return [(paragraphs[i], dists[i]) for i in sorted_ix[:self.n_to_select] if dists[i] < 1.0]
+        else:
+            return [(paragraphs[i], dists[i]) for i in sorted_ix[:self.n_to_select]]
+        """
+        """
+        wv = load_word_vectors("glove.840B.300d") 
+
+        question_embedding = 0
+        for q in question:
+            question_embedding += wv[q]
+
+        para_embeddings = []
+        for para in paragraphs:
+            embed = 0
+            for s in para.text:
+                embed += wv[s]
+            para_embeddings.append(embed)
+        
+        question_norm = (question_embedding*question_embedding).sum()
+        for e in range(len(para_embeddings)):
+            para_embeddings[e] = para_embeddings[e]/(para_embeddings[e]*para_embeddings[e]).sum()
+
+        dists = (question_norm*para_embeddings).sum(dim=1)
+        sorted_ix = np.lexsort(([x.start for x in paragraphs], dists))
+        """
+        #print("loading word embeddings")
+        #wv = load_word_vectors("glove.840B.300d") 
+        #print("Question",question)
+        question_embedding = 0
+        count = 0
+        for q in question:
+            if q in self.wv:
+                question_embedding += self.wv[q]
+                count += 1
+            #print("wvq",q, self.wv[q])
+        question_embedding = np.asarray(question_embedding)/count
+        #print("Question embedding", question_embedding)
+        #print("QE shape",question_embedding.shape)
+        question_norm = np.sqrt((question_embedding*question_embedding).sum())
+        #print("ques norm", question_norm)
+        #question_embedding = np.asarray(question_embedding, dtype=np.float32)/question_norm
+        question_embedding = question_embedding/question_norm
+
+        para_embeddings = []
+        #print("paragraphs", paragraphs)
+        #print("paragraphs shape", len(paragraphs))
+        
+        for para in paragraphs:
+            #print("para",para)
+            #print("para.text", para.text)
+            embed = 0
+            count = 0
+            for s in para.text:
+                for word in s:
+                    if word in self.wv:
+                        embed += self.wv[word]
+                        count += 1
+            para_embeddings.append(embed/count)
+        para_embeddings = np.asarray(para_embeddings)
+        #print("para embed",para_embeddings)
+        #print("para embed shape", para_embeddings.shape)
+
+        for e in range(len(para_embeddings)):
+            para_embeddings[e] = para_embeddings[e]/(para_embeddings[e]*para_embeddings[e]).sum()
+        #print(para_embeddings[0])
+        
+        dists = (question_embedding*para_embeddings).sum(axis=1)
+        #print("dists",dists)
+        #print("dists shape",dists.shape)
+        sorted_ix = np.lexsort(([x.start for x in paragraphs], dists))
+
+
+
+        if self.filter_dist_one:
+            return [(paragraphs[i], dists[i]) for i in sorted_ix[:self.n_to_select] if dists[i] < 1.0]
+        else:
+            return [(paragraphs[i], dists[i]) for i in sorted_ix[:self.n_to_select]]
+
+
+
 class ShallowOpenWebRanker(ParagraphFilter):
     # Hard coded weight learned from a logistic regression classifier
     TFIDF_W = 5.13365065
@@ -164,6 +359,13 @@ class ShallowOpenWebRanker(ParagraphFilter):
     def score_paragraphs(self, question, paragraphs: List[ExtractedParagraphWithAnswers]):
         tfidf = self._tfidf
         text = []
+        
+        #if len(paragraphs) == 0:
+            #print(para_embeddings)
+            #print(len(paragraphs))
+            #print(paragraphs)
+
+
         for para in paragraphs:
             text.append(" ".join(" ".join(s) for s in para.text))
         try:

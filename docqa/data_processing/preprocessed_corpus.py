@@ -143,7 +143,8 @@ class PreprocessedData(TrainingData):
         else:
             handle = open
         with handle(filename, "wb") as f:
-            pickle.dump([self.preprocesser, self._train, self._dev, self._verified_dev], f)
+            #pickle.dump([self.preprocesser, self._train, self._dev, self._verified_dev], f)
+            pickle.dump([0, self._train, self._dev, self._verified_dev], f)
 
     def load_preprocess(self, filename):
         print("Loading preprocessed data...")
@@ -153,13 +154,15 @@ class PreprocessedData(TrainingData):
             handle = open
         with handle(filename, "rb") as f:
             stored = pickle.load(f)
-            stored_preprocesser, self._train, self._dev, self._verified_dev = stored
+            _, self._train, self._dev, self._verified_dev = stored
+            #stored_preprocesser, self._train, self._dev, self._verified_dev = stored
+        """
         if stored_preprocesser.get_config() != self.preprocesser.get_config():
             # print("WARNING")
             import code
             code.interact(local=locals())
             raise ValueError()
-
+        """
         print("done")
 
     def preprocess(self, n_processes=1, chunk_size=500, filename=None):

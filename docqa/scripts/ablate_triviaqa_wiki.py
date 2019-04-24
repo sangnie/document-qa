@@ -1,9 +1,12 @@
 import argparse
+import os
+from os.path import join
 from datetime import datetime
+from docqa.config import CORPUS_DIR
 
 from docqa import model_dir
 from docqa import trainer
-from docqa.data_processing.document_splitter import MergeParagraphs, ShallowOpenWebRanker
+from docqa.data_processing.document_splitter import MergeParagraphs, ShallowOpenWebRanker, EmbeddingDistance
 from docqa.data_processing.multi_paragraph_qa import StratifyParagraphsBuilder, \
     StratifyParagraphSetsBuilder, RandomParagraphSetDatasetBuilder
 from docqa.data_processing.preprocessed_corpus import PreprocessedData
@@ -16,6 +19,7 @@ from docqa.trainer import SerializableOptimizer, TrainParams
 from docqa.triviaqa.build_span_corpus import TriviaQaOpenDataset, TriviaQaWikiDataset
 from docqa.triviaqa.training_data import ExtractMultiParagraphsPerQuestion
 
+from docqa.data_processing.text_utils import NltkPlusStopWords
 
 def main():
     parser = argparse.ArgumentParser(description='Train a model on TriviaQA wiki')
@@ -37,8 +41,11 @@ def main():
 
     model = get_model(100, 140, mode, WithIndicators())
 
+    #extract = ExtractMultiParagraphsPerQuestion(MergeParagraphs(args.n_tokens),
+    #                                            ShallowOpenWebRanker(16),
+    #                                            model.preprocessor, intern=True)
     extract = ExtractMultiParagraphsPerQuestion(MergeParagraphs(args.n_tokens),
-                                                ShallowOpenWebRanker(16),
+                                                EmbeddingDistance(NltkPlusStopWords(True), 16),
                                                 model.preprocessor, intern=True)
 
     eval = [LossEvaluator(), MultiParagraphSpanEvaluator(8, "triviaqa", mode != "merge", per_doc=False)]
@@ -72,8 +79,12 @@ def main():
     )
 
     data = PreprocessedData(data, extract, train, test, eval_on_verified=False)
-
-    data.preprocess(args.n_processes, 1000)
+    
+    filename = join(CORPUS_DIR,"../preprocessed_wiki_embed_dist.gz")
+    if os.path.isfile(filename):
+        data.load_preprocess(filename)
+    else:
+        data.preprocess(args.n_processes, 1000, filename=filename)
 
     with open(__file__, "r") as f:
         notes = f.read()

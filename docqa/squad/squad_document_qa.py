@@ -12,6 +12,8 @@ from docqa.squad.squad_data import Document
 from docqa.text_preprocessor import TextPreprocessor
 from docqa.utils import flatten_iterable
 
+from docqa.data_processing.word_vectors import load_word_vectors
+
 """
 Preprocessors for document-level question answering with SQuAD data
 """
@@ -79,7 +81,6 @@ class QuestionAndSquadParagraph(ContextAndQuestion):
     def n_context_words(self) -> int:
         return len(self.para.text)
 
-
 class SquadTfIdfRanker(Preprocessor):
     """
     TF-IDF ranking for SQuAD, this does the same thing as `TopTfIdf`, but its supports efficient usage
@@ -101,6 +102,129 @@ class SquadTfIdfRanker(Preprocessor):
         para_features = tfidf.fit_transform([" ".join(" ".join(s) for s in x) for x in paragraphs])
         q_features = tfidf.transform([" ".join(q) for q in questions])
         scores = pairwise_distances(q_features, para_features, "cosine")
+        return scores
+
+    def ranked_questions(self, docs: List[Document]) -> List[MultiParagraphQuestion]:
+        out = []
+        for doc in docs:
+            scores = self.rank(flatten_iterable([q.words for q in x.questions] for x in doc.paragraphs),
+                               [x.text for x in doc.paragraphs])
+            q_ix = 0
+            for para_ix, para in enumerate(doc.paragraphs):
+                for q in para.questions:
+                    para_scores = scores[q_ix]
+                    para_ranks = np.argsort(para_scores)
+                    selection = [i for i in para_ranks[:self.n_to_select]]
+
+                    if self.force_answer and para_ix not in selection:
+                        selection[-1] = para_ix
+
+                    para = []
+                    for ix in selection:
+                        if ix == para_ix:
+                            ans = q.answer.answer_spans
+                        else:
+                            ans = np.zeros((0, 2), dtype=np.int32)
+                        p = doc.paragraphs[ix]
+                        if self.text_process:
+                            text, ans, inv = self.text_process.encode_paragraph(q.words,  [flatten_iterable(p.text)],
+                                                               p.paragraph_num == 0, ans, p.spans)
+                            para.append(SquadParagraphWithAnswers(text, ans, doc.doc_id,
+                                                                  ix, p.original_text, inv))
+                        else:
+                            para.append(SquadParagraphWithAnswers(flatten_iterable(p.text), ans, doc.doc_id,
+                                                                  ix, p.original_text, p.spans))
+
+                    out.append(MultiParagraphQuestion(q.question_id, q.words, q.answer.answer_text, para))
+                    q_ix += 1
+        return out
+
+
+class SquadEmbeddingDistance(Preprocessor):
+    """
+    TF-IDF ranking for SQuAD, this does the same thing as `TopTfIdf`, but its supports efficient usage
+    when have many many questions per document
+    """
+
+    def __init__(self, stop, n_to_select: int, force_answer: bool, text_process: TextPreprocessor=None):
+        self.stop = stop
+        self.n_to_select = n_to_select
+        self.force_answer = force_answer
+        self.text_process = text_process
+        #self._tfidf = TfidfVectorizer(strip_accents="unicode", stop_words=self.stop.words)
+        self.wv = load_word_vectors("glove.840B.300d")
+
+    def preprocess(self, question: List[Document], evidence):
+        return self.ranked_questions(question)
+
+    def rank(self, questions: List[List[str]], paragraphs: List[List[List[str]]]):
+        """
+        tfidf = self._tfidf
+        para_features = tfidf.fit_transform([" ".join(" ".join(s) for s in x) for x in paragraphs])
+        q_features = tfidf.transform([" ".join(q) for q in questions])
+        scores = pairwise_distances(q_features, para_features, "cosine")
+        return scores
+        """
+        question_embeddings = []
+        
+        for q in questions:
+            embed = 0
+            count = 0
+            for word in q:
+                if word in self.wv:
+                    embed += self.wv[word]
+                    count += 1
+            if count > 0:
+                question_embeddings.append(embed/count)
+            else:
+                question_embeddings.append(np.zeros(300, dtype=np.float32))
+        question_embeddings = np.asarray(question_embeddings)
+        for e in range(len(question_embeddings)):
+            norm = np.sqrt((question_embeddings[e]*question_embeddings[e]).sum())
+            if norm > 0:
+                question_embeddings[e] = question_embeddings[e]/norm
+            #print("wvq",q, self.wv[q])
+        #if count > 0:
+        #    question_embedding = np.asarray(question_embedding)/count
+        #else:
+        #    question_embedding = np.zeros(300, dtype=np.float32)
+        #print("Question embedding", question_embedding)
+        #print("QE shape",question_embedding.shape)
+        #question_norm = np.sqrt((question_embedding*question_embedding).sum())
+        #print("ques norm", question_norm)
+        #question_embedding = np.asarray(question_embedding, dtype=np.float32)/question_norm
+        #if question_norm > 0:
+        #    question_embedding = question_embedding/question_norm
+
+        para_embeddings = []
+        #print("paragraphs", paragraphs)
+        #print("paragraphs shape", len(paragraphs))
+        
+        for para in paragraphs:
+            #print("para",para)
+            #print("para.text", para.text)
+            embed = 0
+            count = 0
+            for s in para:
+                for word in s:
+                    if word in self.wv:
+                        embed += self.wv[word]
+                        count += 1
+            if count > 0:
+                para_embeddings.append(embed/count)
+            else:
+                para_embeddings.append(np.zeros(300, dtype=np.float32))
+        para_embeddings = np.asarray(para_embeddings)
+        #print("para embed",para_embeddings)
+        #print("para embed shape", para_embeddings.shape)
+
+        for e in range(len(para_embeddings)):
+            norm = np.sqrt((para_embeddings[e]*para_embeddings[e]).sum())
+            para_embeddings[e] = para_embeddings[e]/norm
+        #print(para_embeddings[0])
+        
+        #dists = (question_embedding*para_embeddings).sum(axis=1)
+        scores = pairwise_distances(question_embeddings, para_embeddings, "cosine")
         return scores
 
     def ranked_questions(self, docs: List[Document]) -> List[MultiParagraphQuestion]:

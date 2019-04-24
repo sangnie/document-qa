@@ -1,9 +1,14 @@
 import argparse
+import os
 from datetime import datetime
+from os.path import join
+from datetime import datetime
+from docqa.config import CORPUS_DIR
+
 
 from docqa import model_dir
 from docqa import trainer
-from docqa.data_processing.document_splitter import MergeParagraphs, ShallowOpenWebRanker
+from docqa.data_processing.document_splitter import MergeParagraphs, ShallowOpenWebRanker, EmbeddingDistance
 from docqa.data_processing.multi_paragraph_qa import StratifyParagraphsBuilder, \
     StratifyParagraphSetsBuilder, RandomParagraphSetDatasetBuilder
 from docqa.data_processing.preprocessed_corpus import PreprocessedData
@@ -37,6 +42,8 @@ def main():
 
     extract = ExtractMultiParagraphsPerQuestion(MergeParagraphs(args.n_tokens), ShallowOpenWebRanker(16),
                                                 model.preprocessor, intern=True)
+    #extract = ExtractMultiParagraphsPerQuestion(MergeParagraphs(args.n_tokens), EmbeddingDistance(None, 16),
+    #                                            model.preprocessor, intern=True)
 
     eval = [LossEvaluator(), MultiParagraphSpanEvaluator(8, "triviaqa", mode != "merge", per_doc=False)]
     oversample = [1] * 4
@@ -68,8 +75,12 @@ def main():
     )
 
     data = PreprocessedData(data, extract, train, test, eval_on_verified=False)
-
-    data.preprocess(args.n_processes, 1000)
+    
+    filename = join(CORPUS_DIR,"../preprocessed_unfiltered.gz")
+    if os.path.isfile(filename):
+        data.load_preprocess(filename)
+    else:
+        data.preprocess(args.n_processes, 1000, filename=filename)
 
     with open(__file__, "r") as f:
         notes = f.read()

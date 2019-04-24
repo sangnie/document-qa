@@ -9,7 +9,7 @@ from tensorflow.contrib.keras.python.keras.initializers import TruncatedNormal
 
 from docqa import model_dir
 from docqa import trainer
-from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf
+from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, EmbeddingDistance
 from docqa.data_processing.multi_paragraph_qa import StratifyParagraphsBuilder, \
     StratifyParagraphSetsBuilder, RandomParagraphSetDatasetBuilder
 from docqa.data_processing.preprocessed_corpus import PreprocessedData
@@ -132,11 +132,14 @@ def main():
     stop = NltkPlusStopWords(True)
 
     if mode == "paragraph-level":
-        extract = ExtractSingleParagraph(MergeParagraphs(400), TopTfIdf(stop, 1), model.preprocessor, intern=True)
+        #extract = ExtractSingleParagraph(MergeParagraphs(400), TopTfIdf(stop, 1), model.preprocessor, intern=True)
+        extract = ExtractSingleParagraph(MergeParagraphs(400), EmbeddingDistance(stop, 1), model.preprocessor, intern=True)
     elif mode == "shared-norm-600":
-        extract = ExtractMultiParagraphs(MergeParagraphs(600), TopTfIdf(stop, 4), model.preprocessor, intern=True)
+        #extract = ExtractMultiParagraphs(MergeParagraphs(600), TopTfIdf(stop, 4), model.preprocessor, intern=True)
+        extract = ExtractMultiParagraphs(MergeParagraphs(600), EmbeddingDistance(stop, 4), model.preprocessor, intern=True)
     else:
-        extract = ExtractMultiParagraphs(MergeParagraphs(400), TopTfIdf(stop, 4), model.preprocessor, intern=True)
+        #extract = ExtractMultiParagraphs(MergeParagraphs(400), TopTfIdf(stop, 4), model.preprocessor, intern=True)
+        extract = ExtractMultiParagraphs(MergeParagraphs(400), EmbeddingDistance(stop, 4), model.preprocessor, intern=True)
 
     print("here1")
 
@@ -170,7 +173,7 @@ def main():
 
     params = get_triviaqa_train_params(n_epochs, n_dev, n_train)
 
-    filename = join(CORPUS_DIR,"../preprocess_triviaqa.gz")
+    filename = join(CORPUS_DIR,"../preprocess_triviaqa_embedding.gz")
     data = PreprocessedData(data, extract, train, test, eval_on_verified=False)
 
     if os.path.isfile(filename):
