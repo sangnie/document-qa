@@ -5,7 +5,7 @@ import re
 import numpy as np
 import tensorflow as tf
 
-from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, ShallowOpenWebRanker, PreserveParagraphs
+from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, ShallowOpenWebRanker, PreserveParagraphs, TfidfPronoun2
 from docqa.data_processing.qa_training_data import ParagraphAndQuestion, ParagraphAndQuestionSpec
 from docqa.data_processing.text_utils import NltkAndPunctTokenizer, NltkPlusStopWords
 from docqa.doc_qa_models import ParagraphQuestionModel
@@ -20,6 +20,7 @@ This demonstrates how to use our document-pipeline on new input
 
 def main():
     parser = argparse.ArgumentParser(description="Run an ELMo model on user input")
+    parser.add_argument('--tfidf', action="store_true")
     parser.add_argument("model", help="Model directory")
     parser.add_argument("question", help="Question to answer")
     parser.add_argument("documents", help="List of text documents to answer the question with", nargs='+')
@@ -61,7 +62,10 @@ def main():
     # Now select the top paragraphs using a `ParagraphFilter`
     if len(documents) == 1:
         # Use TF-IDF to select top paragraphs from the document
-        selector = TopTfIdf(NltkPlusStopWords(True), n_to_select=5)
+        if args.tfidf:
+            selector = TopTfIdf(NltkPlusStopWords(True), n_to_select=5)
+        else:
+            selector = TfidfPronoun2(NltkPlusStopWords(True), n_to_select=5)
         context = selector.prune(question, documents[0])
     else:
         # Use a linear classifier to select top paragraphs among all the documents
@@ -112,6 +116,7 @@ def main():
     best_spans, conf = sess.run([best_spans, conf], feed_dict=encoded)  # feed_dict -> predictions
 
     best_para = np.argmax(conf)  # We get output for each paragraph, select the most-confident one to print
+    print(question)
     print("Best Paragraph: " + str(best_para))
     print("Best span: " + str(best_spans[best_para]))
     print("Answer text: " + " ".join(context[best_para][best_spans[best_para][0]:best_spans[best_para][1]+1]))

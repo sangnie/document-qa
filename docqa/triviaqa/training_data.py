@@ -13,6 +13,8 @@ from docqa.text_preprocessor import TextPreprocessor
 from docqa.triviaqa.read_data import TriviaQaQuestion
 from docqa.utils import flatten_iterable
 
+import csv
+
 """
 Tools to convert pre-procossed TriviaQa questions and pre-tokenized docuemnts
 into (question, paragraph) data we can train our model on. 
@@ -121,6 +123,15 @@ class ExtractMultiParagraphs(Preprocessor):
         para_filter = self.ranker
 
         with_paragraphs = []
+        """
+        write_file = open("data_paras_tfidf_pronoun2_df1.csv",'w')
+        writer = csv.writer(write_file)
+        count = 0
+        """
+        top = [1,3,5,10,15]
+        counts = np.zeros(len(top)) 
+        total = np.zeros(len(top))
+
         for q in questions:
             true_len += len(q.all_docs)
             for doc in q.all_docs:
@@ -141,6 +152,27 @@ class ExtractMultiParagraphs(Preprocessor):
 
                 if len(paras) == 0:
                     continue
+
+                for i1,t in enumerate(top):
+                    for ix,p in enumerate(paras):
+                        if ix >= t:
+                            break
+                        total[i1] += 1
+                        if len(p.answer_spans) > 0:
+                            counts[i1] += 1
+
+
+                """     
+                count+=1
+                para_text = []
+                for pa in paras:
+                    para_text.append(" ".join(" ".join(s) for s in pa.text))
+                if count < 500:
+                    writer.writerow([" ".join(q.question), q.question_id, q.answer.value ] + para_text)
+                else:
+                    write_file.close()
+                    exit()
+                """
                 if self.require_an_answer:
                     if all(len(x.answer_spans) == 0 for x in paras):
                         continue
@@ -161,7 +193,14 @@ class ExtractMultiParagraphs(Preprocessor):
                 with_paragraphs.append(MultiParagraphQuestion(q.question_id, q.question,
                                                               None if q.answer is None else q.answer.all_answers,
                                                               doc_paras))
-
+        """
+        with open("topk_data_tfidf_pronoun2_df1.csv",'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(top)
+            writer.writerow(counts)
+            writer.writerow(total)
+        #exit()
+        """
         return FilteredData(with_paragraphs, true_len)
 
     def finalize_chunk(self, q: FilteredData):

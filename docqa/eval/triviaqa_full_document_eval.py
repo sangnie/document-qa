@@ -2,6 +2,7 @@ import argparse
 import json
 from os.path import join
 from typing import List
+import pickle 
 
 import numpy as np
 import pandas as pd
@@ -9,7 +10,7 @@ from tqdm import tqdm
 
 from docqa import trainer
 from docqa.config import TRIVIA_QA
-from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, ShallowOpenWebRanker, FirstN
+from docqa.data_processing.document_splitter import MergeParagraphs, TopTfIdf, ShallowOpenWebRanker, FirstN, EmbeddingDistance, TfidfEmbeddingDistance, TfidfPronoun, TfidfPronoun2, TfidfPronoun3
 from docqa.data_processing.preprocessed_corpus import preprocess_par
 from docqa.data_processing.qa_training_data import ParagraphAndQuestionDataset
 from docqa.data_processing.span_data import TokenSpans
@@ -96,6 +97,8 @@ def main():
     parser.add_argument('-o', '--official_output', type=str, help="Build an offical output file with the model's"
                                                                   " most confident span for each (question, doc) pair")
     parser.add_argument('--no_ema', action="store_true", help="Don't use EMA weights even if they exist")
+    parser.add_argument('--load', help="Load preprocessed file")
+    parser.add_argument('--store', help="Store preprocessed file")
     parser.add_argument('--n_processes', type=int, default=None,
                         help="Number of processes to do the preprocessing (selecting paragraphs+loading context) with")
     parser.add_argument('-i', '--step', type=int, default=None, help="checkpoint to load, default to latest")
@@ -166,7 +169,11 @@ def main():
         args.n_paragraphs, filter_name, ("question-document pair" if per_document else "question")))
 
     if filter_name == "tfidf":
-        para_filter = TopTfIdf(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
+        #para_filter = TopTfIdf(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
+        #para_filter = EmbeddingDistance(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
+        #para_filter = TfidfEmbeddingDistance(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
+        para_filter = TfidfPronoun2(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
+        #para_filter = TfidfPronoun3(NltkPlusStopWords(punctuation=True), args.n_paragraphs)
     elif filter_name == "truncate":
         para_filter = FirstN(args.n_paragraphs)
     elif filter_name == "linear":
@@ -182,11 +189,18 @@ def main():
 
     print("Building question/paragraph pairs...")
     # Loads the relevant questions/documents, selects the right paragraphs, and runs the model's preprocessor
-    if per_document:
-        prep = ExtractMultiParagraphs(splitter, para_filter, model.preprocessor, require_an_answer=False)
+    if args.load:
+        with handle(args.load, "rb") as f:
+            prepped_data = pickle.load(f)
     else:
-        prep = ExtractMultiParagraphsPerQuestion(splitter, para_filter, model.preprocessor, require_an_answer=False)
-    prepped_data = preprocess_par(test_questions, corpus, prep, args.n_processes, 1000)
+        if per_document:
+            prep = ExtractMultiParagraphs(splitter, para_filter, model.preprocessor, require_an_answer=False)
+        else:
+            prep = ExtractMultiParagraphsPerQuestion(splitter, para_filter, model.preprocessor, require_an_answer=False)
+        prepped_data = preprocess_par(test_questions, corpus, prep, args.n_processes, 1000)
+        if args.store:
+            with handle(args.store, "wb") as f:
+                pickle.dump(prepped_data, f)
 
     data = []
     for q in prepped_data.data:
